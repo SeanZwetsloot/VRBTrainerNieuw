@@ -1,0 +1,1255 @@
+<html>
+
+
+
+<head>
+
+    <link rel="icon" type="image/png" href="favicon-32x32.png">
+
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sean's virtuele RBtrainer</title>
+    <style>
+      #hideStats {
+        display: none;
+      }
+    </style>
+    </head>
+    <body>
+    
+    <input type="checkbox" id="hideStats" onchange="changedHideStats()">
+    
+    <script>
+    function changedHideStats() {
+      var isChecked = document.getElementById("hideStats").checked;
+      console.log("Checkbox checked: " + isChecked);
+      // You can add more functionality here based on the checkbox state
+    }
+    </script>
+    
+    </body>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Event</title>
+    <style>
+      #pEvent {
+        display: none;
+      }
+    </style>
+    </head>
+    <body>
+    
+    <select id="pEvent" onchange="changedEvent()">
+      <option value="single" selected>single</option>
+      <option value="marathon">marathon</option>
+      <option value="relay">relay</option>
+    </select>
+    
+    <script>
+    function changedEvent() {
+      var selectedEvent = document.getElementById("pEvent").value;
+      console.log("Selected event: " + selectedEvent);
+      // You can add more functionality here based on the selected event
+    }
+    </script>
+    
+    </body>
+
+
+
+<head>
+<style>
+img.t {opacity:0;filter:alpha(opacity=0);padding:0}
+td {padding:0;}
+.no {display:none;}
+div {border-style:solid;border-width:0;}
+</style>
+<script type="text/javascript">
+<!--
+
+// chrome frame?
+// jquery for browser recognition/image handling/options menu?
+// option: align (left, center, right) dropdown - maybe too hard
+
+// options from the menu
+var colorScheme="default", puzzle="normal", pEvent="single";
+var shiftBehavior = false;
+var colors = ["white", "orange", "green", "red", "blue", "yellow", "#333333", "black", "white"];
+var delta=1; // possible changes in s
+
+var s=5; // size of cube
+var r1=1, r2=2, l1=1, l2=2; // handshifting
+var h=30, hbig, hsmall; // default height
+var cnt=0; // move count
+
+var stickers = [];
+var borders = []; // top right bottom left
+var superborders = [[4,3,2,1],[0,2,5,4],[0,3,5,1],[0,4,5,2],[0,1,5,3],[2,3,4,1]];
+
+var times = [];
+var avgLengths = [5,12,100];
+var bestAverages = [[],[],[]]; // best of 5, 12, 100
+var nCurrent, nTotal; // for marathon and relay
+var startTime;
+var curTime;
+var timerID;
+var inspectionID;
+var started = false;
+var solving = false;
+
+var browser = getBrowser(); // only want to call this once
+
+window.onkeydown=function(event){doKey(event)};
+
+/**********************
+ * CONTROL & GRAPHICS *
+ **********************/
+
+function init() {
+ clearInterval(inspectionID); // just in case
+ document.bgColor = colors[7];
+ document.fgColor = colors[8];
+ if (delta==2 && s%2==0) s++; // no even cubes when delta is 2
+ 
+ changedShiftBehavior();
+ changedHideStats();
+ $('sizeText').value = s;
+ $('moves').innerHTML = "";
+ showProgress();
+ 
+ if (puzzle == "supercube") {
+  hsmall = Math.floor(h/4);
+  hbig = h - 2*hsmall;
+  var v = "<table><tr><td rowspan='2'>" + lface(s*s) + "</td><td>" + superface(0, true) + "</td>";
+  v += "<td rowspan='2'>" + rface(3*s*s) + "</td></tr><tr><td>" + superface(2*s*s, true) + "</td></tr>";
+  v += "<tr><td>" + superface(4*s*s, false) + "</td><td>" + superface(5*s*s,false) + "</td></tr></table>";
+ } else if (puzzle == "minimal") {
+  var v = "<table><tr>";
+  for (var i=0; i<2*s*s; i++) {
+   v += "<td id='"+(i+1)+"' class='no'></td>";
+  }
+  v += "</tr>";
+  for (var i=0; i<(s-1)/2; i++) {
+   v += "<tr>";
+   for (var j=0; j<s; j++) {
+    if (j<(s-1)/2) {
+	 v += "<td id='"+(2*s*s+i*s+j+1)+"' class='no'></td>";
+	} else {
+	 v += "<td id='"+(2*s*s+i*s+j+1)+"' height='"+h+"' width='"+h+"'><img src='x.png' class='t'></td>";
+	}
+   }
+   v += "</tr>";
+  }
+  v += "<tr>";
+  for (var i=2*s*s+s*(s-1)/2; i<6*s*s; i++) {
+   v += "<td id='"+(i+1)+"' class='no'></td>";
+  }
+  v += "</tr></table>";
+ } else { 
+  var v = "<table><tr><td rowspan='2'>" + lface(s*s) + "</td><td>" + face(0, true) + "</td>";
+  v += "<td rowspan='2'>" + rface(3*s*s) + "</td></tr><tr><td>" + face(2*s*s, true) + "</td></tr>";
+  v += "<tr><td>" + face(4*s*s, false) + "</td><td>" + face(5*s*s,false) + "</td></tr></table>";
+ }
+ $('cube').innerHTML = v;
+ 
+ stickers = [];
+ borders = [];
+ if (puzzle == "3colorl") {
+  for (var j=0; j<s*s; j++) {
+   stickers[j+1] = 3;
+   stickers[5*s*s+j+1] = 4;
+  }
+  for (var i=1; i<5; i++) {
+   for (var j=0; j<s; j++) {
+    stickers[i*s*s+j+1] = 3;
+	stickers[i*s*s+j+1+(s-1)*s] = 4;
+    for (var k=1; k<s-1; k++) {
+	 stickers[i*s*s+k*s+j+1] = 0;
+	}
+   }
+  }
+ } else if (puzzle == "supercube") {
+  for (var i=0; i<6; i++) {
+   for (var j=0; j<s*s; j++) {
+    stickers[i*s*s+j+1] = i;
+	borders[i*s*s+j+1] = [];
+	for (var k=0; k<4; k++) {
+	 borders[i*s*s+j+1][k] = superborders[i][k];
+	}
+   }
+  }
+ } else {
+  for (var i=0; i<6; i++) {
+   for (var j=0; j<s*s; j++) {
+    stickers[i*s*s+j+1] = i;
+   }
+  }
+ }
+ 
+ redrawAll();
+}
+
+function lface(n) {
+ var w = "<table><tr><td id='"+(n+1)+"' height='"+h+"' width='"+h+"'><img src='x.png' class='t'></td></tr>";
+ for (var i=2; i<s; i++) {
+  w += "<tr><td id='"+(n+i)+"' height='"+h+"' width='"+h+"'><img src='x.png' class='t'></td></tr>";
+ }
+ w += "<tr><td id='"+(n+s)+"' height='"+(2*h+7)+"' width='"+h+"'><img src='x.png' class='t'></td></tr>";
+ for (var i=1; i<s; i++) {
+  w += "<tr>";
+  for (var j=0; j<s; j++) {
+   if (j < s-1)
+    w += "<td id='"+(n+i*s+j+1)+"' class='no'></td>";
+   if (j == s-1)
+    w += "<td id='"+(n+i*s+j+1)+"' height='"+h+"' width='"+h+"'><img src='x.png' class='t'></td>";
+  }
+  w += "</tr>";
+ }
+ w += "</table>";
+ return w;
+}
+
+function rface(n) {
+ var w = "<table><tr><td id='"+(n+s)+"' height='"+h+"' width='"+h+"'><img src='x.png' class='t'></td></tr>";
+ for (var i=s-1; i>1; i--) {
+  w += "<tr><td id='"+(n+i)+"' height='"+h+"' width='"+h+"'><img src='x.png' class='t'></td></tr>";
+ }
+ w += "<tr><td id='"+(n+1)+"' height='"+(2*h+7)+"' width='"+h+"'><img src='x.png' class='t'></td></tr>";
+ for (var i=1; i<s; i++) {
+  w += "<tr>";
+  for (var j=0; j<s; j++) {
+   if (j > 0)
+    w += "<td id='"+(n+i*s+j+1)+"' class='no'></td>";
+   if (j == 0)
+    w += "<td id='"+(n+i*s+j+1)+"' height='"+h+"' width='"+h+"'><img src='x.png' class='t'></td>";
+  }
+  w += "</tr>";
+ }
+ w += "</table>";
+ return w;
+}
+
+function face(n, trans) {
+ var w = "<table>";
+ if (!trans) w = "<table style='display:none;'>";
+ for (var i=0; i<s; i++) {
+  w += "<tr>";
+  for (var j=0; j<s; j++) {
+   if (trans) {
+    w += "<td id='"+(n+i*s+j+1)+"' height='"+h+"' width='"+h+"'";
+    if (i == Math.floor((s+1)/2) && j == Math.floor((s+1)/2) && s>3) {
+     w += " style='text-align:left;vertical-align:top'><img src='x.png' height='2' width='2'";
+    } else if (i == Math.floor((s-2)/2) && j == Math.floor((s+1)/2) && s>3) {
+     w += " style='text-align:left;vertical-align:bottom'><img src='x.png' height='2' width='2'";
+    } else if (i == Math.floor((s+1)/2) && j == Math.floor((s-2)/2) && s>3) {
+     w += " style='text-align:right;vertical-align:top'><img src='x.png' height='2' width='2'";
+    } else if (i == Math.floor((s-2)/2) && j == Math.floor((s-2)/2) && s>3) {
+     w += " style='text-align:right;vertical-align:bottom'><img src='x.png' height='2' width='2'";
+    } else {
+     w += "><img src='x.png' class='t'";
+    }
+    w += "></td>";
+   }
+   else
+    w += "<td id='"+(n+i*s+j+1)+"' class='no'></td>";
+  }
+  w += "</tr>";
+ }
+ w += "</table>";
+ return w;
+}
+
+function superface(n, visible) {
+ var w = "";
+ if (visible) {
+  w += "<table>";
+  for (var i=0; i<s; i++) {
+   w += "<tr>";
+   for (var j=0; j<s; j++) {
+    w += "<td><div id='"+(n+i*s+j+1)+"' style='";
+    if (i==0 || j==0 || i==s-1 || j==s-1) { // edge
+     w += "border-width:0'><img height='"+h+"' width='"+h+"'";
+    } else if (i==(s-1)/2 && j==(s-1)/2) { // center-center
+     w += "border-width:"+hsmall+"px;'><img height='"+hbig+"' width='"+hbig+"'";
+    } else if (i==j && i<(s-1)/2) { //topleft x-center
+     w += "border-top-width:"+hsmall+"px;border-left-width:"+hsmall+"px;'><img height='"+(h-hsmall)+"' width='"+(h-hsmall)+"'";
+    } else if (i+j==s-1 && i<(s-1)/2) { //topright x-center
+     w += "border-top-width:"+hsmall+"px;border-right-width:"+hsmall+"px;'><img height='"+(h-hsmall)+"' width='"+(h-hsmall)+"'";
+    } else if (i+j==s-1 && i>(s-1)/2) { //bottomleft x-center
+     w += "border-bottom-width:"+hsmall+"px;border-left-width:"+hsmall+"px;'><img height='"+(h-hsmall)+"' width='"+(h-hsmall)+"'";
+    } else if (i==j && i>(s-1)/2) { //bottomright x-center
+     w += "border-bottom-width:"+hsmall+"px;border-right-width:"+hsmall+"px;'><img height='"+(h-hsmall)+"' width='"+(h-hsmall)+"'";
+    } else if (i>j && i+j>s-1) { //bottom t-center
+     w += "border-bottom-width:"+hsmall+"px;'><img height='"+(h-hsmall)+"' width='"+h+"'";
+    } else if (i<j && i+j>s-1) { //right t-center
+     w += "border-right-width:"+hsmall+"px;'><img height='"+h+"' width='"+(h-hsmall)+"'";
+    } else if (i>j && i+j<s-1) { //left t-center
+     w += "border-left-width:"+hsmall+"px;'><img height='"+h+"' width='"+(h-hsmall)+"'";
+    } else if (i<j && i+j<s-1) { //top t-center
+     w += "border-top-width:"+hsmall+"px;'><img height='"+(h-hsmall)+"' width='"+h+"'";
+    }
+    w += " src='x.png' class='t'></div></td>";
+   }
+   w += "</tr>";
+  }
+ } else {
+  w += "<table style='display:none;'>";
+  for (var i=0; i<s; i++) {
+   w += "<tr>";
+   for (var j=0; j<s; j++) {
+    w += "<td id='"+(n+i*s+j+1)+"'></td>";
+   }
+   w += "</tr>";
+  }
+ }
+ w += "</table>";
+ return w;
+}
+
+function doKey(e) {
+ var keyCode = 0;
+ if (e.keyCode) {
+  keyCode = e.keyCode;
+ } else if (e.which) {
+  keyCode = e.which;
+ }
+ var shift = e.shiftKey;
+ var clockwise = ((shiftBehavior && shift) ? 2 : 1); // shift modifier for double turns
+ var counterclockwise = ((shiftBehavior && shift) ? 2 : 3); // shift modifier for double turns
+ var caps = e.getModifierState && e.getModifierState('CapsLock');
+ var shmod = ((!shiftBehavior && !caps && shift) ? 1 : 0); // shift modifier for layers
+ var l1c = (caps ? 1 : l1);
+ var l2c = (caps ? s-1 : l2);
+ var r1c = (caps ? 1 : r1);
+ var r2c = (caps ? s-1 : r2);
+ 
+ if (keyCode == 32 || keyCode == 9) { // prevent normal handling of space and tab key
+  if (e.stopPropagation) {
+   e.stopPropagation();
+  }
+  e.preventDefault();
+ }
+
+ // space to scramble
+ if (keyCode == 32) {
+  l1 = 1;
+  l2 = 2;
+  r1 = 1;
+  r2 = 2;
+  showHands();
+  if (solving) {
+   if (isSolved()) {
+    finishSolve();
+   }
+  } else {
+   if (pEvent == "relay") {
+    s = 1+delta; // 2 if any cubes allowed, 3 if only odds
+	nCurrent = 1;
+	init();
+   } else {
+    nCurrent = 0;
+   }
+   showProgress();
+   scramble();
+   cnt = 0;
+   inspectionID = setTimeout(startTimer, 15000);
+   started = false;
+   solving = true;
+  }
+ }
+
+ //i k = R R'
+ else if (keyCode == 73) move(2, clockwise, 1, r1c+shmod, true);
+ else if (keyCode == 75) move(2, counterclockwise, 1, r1c+shmod, true);
+ //j f = U U'
+ else if (keyCode == 74) move(1, clockwise, 1, 1+shmod, true);
+ else if (keyCode == 70) move(1, counterclockwise, 1, 1+shmod, true);
+ //d e = L L'
+ else if (keyCode == 68) move(2, counterclockwise, s-l1c+1-shmod, s, true);
+ else if (keyCode == 69) move(2, clockwise, s-l1c+1-shmod, s, true);
+ //u m = Rw Rw'
+ else if (keyCode == 85) move(2, clockwise, 1, r2c+shmod, true);
+ else if (keyCode == 77) move(2, counterclockwise, 1, r2c+shmod, true);
+ //v r = Lw Lw'
+ else if (keyCode == 86) move(2, counterclockwise, s-l2c+1-shmod, s, true);
+ else if (keyCode == 82) move(2, clockwise, s-l2c+1-shmod, s, true);
+ //h g = F F'
+ else if (keyCode == 72) move(0, clockwise, 1, 1+shmod, true);
+ else if (keyCode == 71) move(0, counterclockwise, 1, 1+shmod, true);
+ //s l = D D'
+ else if (keyCode == 83) move(1, counterclockwise, s-shmod, s, true);
+ else if (keyCode == 76) move(1, clockwise, s-shmod, s, true);
+ //; a = y y'
+ else if (keyCode == 59 || ((browser == "Chrome" || browser == "IE") && keyCode == 186)) move(1, clockwise, 1, s, true);
+ else if (keyCode == 65) move(1, counterclockwise, 1, s, true);
+ //w o = B B'
+ else if (keyCode == 87) move(0, counterclockwise, s-shmod, s, true);
+ else if (keyCode == 79) move(0, clockwise, s-shmod, s, true);
+ //yt bn = x x'
+ else if (keyCode == 89 || keyCode == 84) move(2, clockwise, 1, s, true);
+ else if (keyCode == 66 || keyCode == 78) move(2, counterclockwise, 1, s, true);
+ //p q = z z'
+ else if (keyCode == 80) move(0, clockwise, 1, s, true);
+ else if (keyCode == 81) move(0, counterclockwise, 1, s, true);
+ //ctrl = Uw top half
+ else if (keyCode == 17) move(1, clockwise, 1, Math.floor(s/2), true);
+ //else if (keyCode == 88) move(1, counterclockwise, 1, Math.floor(s/2), true);
+ //\ / = M M' for ben
+ //else if (keyCode == 220) move(2, counterclockwise, r1c+shmod+1, s-l1c-shmod, true);
+ //else if (keyCode == 191) move(2, clockwise, r1c+shmod+1, s-l1c-shmod, true);
+ // z / = Dw Dw'
+ //else if (keyCode == 90) move(1, counterclockwise, (caps ? 2 : s-shmod-1), s, true);
+ else if (keyCode == 90) move(1, counterclockwise, (caps ? 2 : (s>5 ? s-Math.floor(s/2)+1 : s-shmod-1)), s, true);
+ else if (keyCode == 191) move(1, clockwise, (caps ? 2 : s-shmod-1), s, true);
+ // 5 x = l l'
+ else if (keyCode == 53) move(2, counterclockwise, s-l2c+1-shmod, s-l1c-shmod, true);
+ else if (keyCode == 88) move(2, clockwise, s-l2c+1-shmod, s-l1c-shmod, true);
+ // 6 . = r' r
+ else if (keyCode == 54) move(2, counterclockwise, r1c+shmod+1, r2c+shmod, true);
+ else if (keyCode == 190) move(2, clockwise, r1c+shmod+1, r2c+shmod, true);
+ // , c = Uw Uw'
+ else if (keyCode == 67) move(1, counterclockwise, 1, (caps ? s-1 : 2+shmod), true);
+ else if (keyCode == 188) move(1, clockwise, 1, (caps ? s-1 : 2+shmod), true);
+
+ //+ - for cube size
+ else if (!shift && (keyCode == 107 || keyCode == 61 || ((browser == "Chrome" || browser == "IE") && keyCode == 187)))
+  changeS(s+delta);
+ else if (!shift && (s-delta)>1 && (keyCode == 109 || keyCode == 173 || ((browser == "Chrome" || browser == "IE") && keyCode == 189)))
+  changeS(s-delta);
+
+ //shift + - for square size
+ else if (shift && (keyCode == 107 || keyCode == 61 || ((browser == "Chrome" || browser == "IE") && keyCode == 187)))
+  changeH(h+1);
+ else if (shift && (keyCode == 109 || keyCode == 173 || ((browser == "Chrome" || browser == "IE") && keyCode == 189)))
+  changeH(h-1);
+
+ //7 8 for Rin Rout
+ else if (keyCode == 55) {
+  r2++;
+  if(!shift) r1++;
+  showHands();
+ }
+ else if (keyCode == 56) {
+  if (shift && (r2-r1) > 1) r2--;
+  if (!shift && r1 > 1) {r2--; r1--;}
+  showHands();
+ }
+
+ //4 3 for Lin Lout
+ else if (keyCode == 52) {
+  l2++;
+  if(!shift) l1++;
+  showHands();
+ }
+ else if (keyCode == 51) {
+  if (shift && (l2-l1) > 1) l2--;
+  if (!shift && l1 > 1) {l2--; l1--;}
+  showHands();
+ }
+ 
+ //< > for marathon length
+ else if (keyCode == 188 && shift && nTotal>1 && pEvent=="marathon") {nTotal--; showProgress();}
+ else if (keyCode == 190 && shift && pEvent=="marathon") {nTotal++; showProgress();}
+
+ //escape to reset
+ else if (keyCode == 27) {
+  if(solving) {
+   var agree = confirm("ff kijken of dat niet perongelijk ging :) ");
+   if (!agree) return;
+  }
+  reset();
+ }
+}
+
+function finishSolve() {
+ if (pEvent == "single") {
+  stopTimer(true);
+  started = false;
+  solving = false;
+ } else if (pEvent == "marathon") {
+  nCurrent++;
+  showProgress();
+  if (nCurrent >= nTotal) {
+   stopTimer(true);
+   started = false;
+   solving = false;
+  } else {
+   scramble();
+   started = true;
+   solving = true;
+  }
+ } else if (pEvent == "relay") {
+  nCurrent = s;
+  showProgress();
+  if (nCurrent < nTotal) {
+   s++;
+   init();
+   scramble();
+   started = true;
+   solving = true;
+  } else {
+   stopTimer(true);
+   started = false;
+   solving = false;
+  }
+ }
+}
+
+function reset() {
+ if (pEvent=="relay") {
+  s = nTotal;
+ }
+ showProgress();
+ nCurrent = 0;
+ if (solving && puzzle != "timer") clearTimes();
+ stopTimer(false);
+ solving = false;
+ started = false;
+ init();
+}
+
+function changedPuzzle() {
+ var obj = $('puzzle');
+ puzzle = obj.options[obj.selectedIndex].value;
+ if (puzzle == "dazzler" || puzzle == "gray" || puzzle == "illusion" || puzzle == "minimal") {
+  delta = 2;
+ } else {
+  delta = 1;
+ }
+ 
+ reset();
+ clearTimes();
+ changedColor(); // start with unmodified color scheme
+}
+
+function changedEvent() {
+ if (pEvent=="relay") {
+  s = nTotal;
+ }
+ var obj = $('pEvent');
+ pEvent = obj.options[obj.selectedIndex].value;
+ if (pEvent=="marathon") {
+  nCurrent = 0;
+  nTotal = 42; // default
+ } else if (pEvent=="relay") {
+  nCurrent = 0;
+  nTotal = s;
+ }
+ reset();
+ clearTimes();
+}
+
+function changedColor() {
+ var obj = $('colors');
+ colorScheme = obj.options[obj.selectedIndex].value;
+ 
+ // if you're reading this, feel free to make a custom color scheme!
+ // first 6: side colors; 7: alternate color; 8: bg color; 9: text color
+ colors = ["white", "orange", "green", "red", "blue", "yellow", "#333333", "black", "white"]; // default
+ if (colorScheme == "dark") {
+  colors = ["#333333", "orange", "green", "red", "blue", "yellow", "white", "black", "white"];
+ } else if (colorScheme == "inverted") {
+  colors = ["#333333", "orange", "green", "red", "blue", "yellow", "#fafafa", "white", "black"];
+ } else if (colorScheme == "bright") {
+  colors = ["#fafafa", "orange", "limegreen", "red", "dodgerblue", "yellow", "#333333", "white", "black"];
+ } else if (colorScheme == "Japanese") {
+  colors = ["white", "orange", "green", "red", "yellow", "blue", "#333333", "black", "white"];
+ } else if (colorScheme == "gray") {
+  colors = ["white", "white", "white", "white", "white", "white", "gray", "black", "white"];
+ }
+ redrawAll();
+ document.bgColor = colors[7];
+ document.fgColor = colors[8];
+}
+
+function changedShiftBehavior() {
+ shiftBehavior = $('shiftBehavior').checked;
+}
+
+function changedHideStats() {
+ $('stats').style.display = ($('hideStats').checked) ? "none" : ""; 
+}
+
+function changedSize() {
+ var newSize = parseInt($('sizeText').value);
+ changeS(newSize);
+}
+
+function changeS(newS) {
+ if(solving) {
+  var agree = confirm("ff kijken of dat niet perongelijk ging :) ");
+  if (!agree) return;
+ }
+
+ if (newS < 2) newS = 2;
+ if (delta==2 && newS%2==0) newS++; // no even cubes when delta is 2
+ if (newS == s) return;
+ 
+ stopTimer(false);
+ solving = false;
+ h = Math.round(h * s/newS);
+ s = newS;
+ if (pEvent == "relay") nTotal = s;
+ $('sizeText').value = s;
+ init();
+ clearTimes();
+}
+
+function changeH(newH) {
+ if (puzzle == "supercube") {
+  if (newH < 1) return;
+  h = newH;
+  hsmall = Math.floor(h/4);
+  hbig = h - 2*hsmall;
+
+  for (var x=0; x<4*s*s; x+=2*s*s) {
+   for (var i=0; i<s; i++) {
+    for (var j=0; j<s; j++) {
+     if (i==0 || j==0 || i==s-1 || j==s-1) {
+      $(x+i*s+j+1).innerHTML = "<img src='x.png' class='t' height='"+h+"' width='"+h+"' />";
+     } else if (i==(s-1)/2 && j==(s-1)/2) {
+      $(x+i*s+j+1).style.borderWidth = hsmall+"px";
+      $(x+i*s+j+1).innerHTML = "<img src='x.png' class='t' height='"+hbig+"' width='"+hbig+"' />";
+     } else if (i==j && i<(s-1)/2) {
+      $(x+i*s+j+1).style.borderTopWidth = hsmall+"px";
+      $(x+i*s+j+1).style.borderLeftWidth = hsmall+"px";
+      $(x+i*s+j+1).innerHTML = "<img src='x.png' class='t' height='"+(h-hsmall)+"' width='"+(h-hsmall)+"' />";
+     } else if (i+j==s-1 && i<(s-1)/2) {
+      $(x+i*s+j+1).style.borderTopWidth = hsmall+"px";
+      $(x+i*s+j+1).style.borderRightWidth = hsmall+"px";
+      $(x+i*s+j+1).innerHTML = "<img src='x.png' class='t' height='"+(h-hsmall)+"' width='"+(h-hsmall)+"' />";
+     } else if (i+j==s-1 && i>(s-1)/2) {
+      $(x+i*s+j+1).style.borderBottomWidth = hsmall+"px";
+      $(x+i*s+j+1).style.borderLeftWidth = hsmall+"px";
+      $(x+i*s+j+1).innerHTML = "<img src='x.png' class='t' height='"+(h-hsmall)+"' width='"+(h-hsmall)+"' />";
+     } else if (i==j && i>(s-1)/2) {
+      $(x+i*s+j+1).style.borderBottomWidth = hsmall+"px";
+      $(x+i*s+j+1).style.borderRightWidth = hsmall+"px";
+      $(x+i*s+j+1).innerHTML = "<img src='x.png' class='t' height='"+(h-hsmall)+"' width='"+(h-hsmall)+"' />";
+     } else if (i>j && i+j>s-1) {
+      $(x+i*s+j+1).style.borderBottomWidth = hsmall+"px";
+      $(x+i*s+j+1).innerHTML = "<img src='x.png' class='t' height='"+(h-hsmall)+"' width='"+h+"' />";
+     } else if (i<j && i+j>s-1) {
+      $(x+i*s+j+1).style.borderRightWidth = hsmall+"px";
+      $(x+i*s+j+1).innerHTML = "<img src='x.png' class='t' height='"+h+"' width='"+(h-hsmall)+"' />";
+     } else if (i>j && i+j<s-1) {
+      $(x+i*s+j+1).style.borderLeftWidth = hsmall+"px";
+      $(x+i*s+j+1).innerHTML = "<img src='x.png' class='t' height='"+h+"' width='"+(h-hsmall)+"' />";
+     } else if (i<j && i+j<s-1) {
+      $(x+i*s+j+1).style.borderTopWidth = hsmall+"px";
+      $(x+i*s+j+1).innerHTML = "<img src='x.png' class='t' height='"+(h-hsmall)+"' width='"+h+"' />";
+     }
+    }
+   }
+  }
+
+  for (var i=1; i<s; i++) {
+   $(s*s+i).style.height = h;
+   $(s*s+i).style.width = h;
+   $(s*s+s+s*i).style.height = h;
+   $(s*s+s+s*i).style.width = h;
+   $(3*s*s+i+1).style.height = h;
+   $(3*s*s+i+1).style.width = h;
+   $(3*s*s+1+s*i).style.height = h;
+   $(3*s*s+1+s*i).style.width = h;
+  }
+  $(s*s+s).style.height = 2*h+7;
+  $(s*s+s).style.width = h;
+  $(3*s*s+1).style.height = 2*h+7;
+  $(3*s*s+1).style.width = h;
+ } else {
+  if (newH < 1) return;
+  h = newH;
+  for (var i=1; i<=s*s; i++) {
+   $(i).style.height = h;
+   $(i).style.width = h;
+   $(2*s*s+i).style.height = h;
+   $(2*s*s+i).style.width = h;
+  }
+  for (var i=1; i<s; i++) {
+   $(s*s+i).style.height = h;
+   $(s*s+i).style.width = h;
+   $(s*s+s+s*i).style.height = h;
+   $(s*s+s+s*i).style.width = h;
+   $(3*s*s+i+1).style.height = h;
+   $(3*s*s+i+1).style.width = h;
+   $(3*s*s+1+s*i).style.height = h;
+   $(3*s*s+1+s*i).style.width = h;
+  }
+  $(s*s+s).style.height = 2*h+7;
+  $(s*s+s).style.width = h;
+  $(3*s*s+1).style.height = 2*h+7;
+  $(3*s*s+1).style.width = h;
+ }
+}
+
+function showHands() {
+ $('hands').innerHTML = l1 + " " + l2 + " | " + r2 + " " + r1;
+}
+
+function showProgress() {
+ if (pEvent == "single") {
+  $('progress').innerHTML = "";
+ } else {
+  $('progress').innerHTML = nCurrent + "/" + nTotal + " cube" + (nTotal==1?"":"s");
+ }
+}
+
+function redrawAll() {
+ for (var i=1; i<=s*s*6; i++) {
+  redraw(i);
+ }
+}
+
+function disco() {
+ for (var i=1; i<6; i++) {
+  var x = Math.floor(Math.random()*(i+1));
+  var tmp = colors[i];
+  colors[i] = colors[x];
+  colors[x] = tmp;
+ }
+ redrawAll();
+}
+
+/******************
+ * PUZZLE DETAILS *
+ ******************/
+
+function getColor(id) {
+ if (puzzle == "gray" || puzzle == "minimal") {
+  if (stickers[id] == stickers[id-((id-1)%(s*s)) + (s*s-1)/2]) {
+   return colors[stickers[id]];
+  } else {
+   return colors[6];
+  }
+ } else if (puzzle == "dazzler") {
+  var location = 1+(id-1)%(s*s);
+  if (location==1 || location==s || location==s*s-s+1 || location==s*s || location==Math.floor(s/2)*(s+1)+1) {
+   return colors[6];
+  } else {
+   return colors[stickers[id]];
+  }
+ } else if (puzzle == "3colorf") {
+  if (stickers[id]==0 || stickers[id]==5) return colors[0];
+  if (stickers[id]==1 || stickers[id]==3) return colors[3];
+  if (stickers[id]==2 || stickers[id]==4) return colors[4];
+ } else if (puzzle == "centers") {
+  var x = (id-1)%s;
+  var y = ((id-1-x)/s)%s;
+  if (x==0 || x==s-1 || y==0 || y==s-1) return colors[6];
+  return colors[stickers[id]];
+ } else if (puzzle == "void") {
+  var x = (id-1)%s;
+  var y = ((id-1-x)/s)%s;
+  if (x==0 || x==s-1 || y==0 || y==s-1) return colors[stickers[id]];
+  return colors[6];
+ } else if (puzzle == "illusion") {
+  var x = (id-1)%s;
+  var y = ((id-1-x)/s)%s;
+  if (stickers[id] == 0) {
+   if ((x==0 || x==s-1) && (y==0 || y==s-1)) return colors[0];
+   return ((x+y)%2==0 ? colors[6] : colors[0]);
+  } else {
+   return ((x+y)%2==0 ? colors[0] : colors[6]);
+  }
+ } else {
+  return colors[stickers[id]];
+ }
+}
+ 
+function move(face, amount, layermin, layermax, update) {
+ if (layermax > s) layermax = s;
+ if (layermin < 1) layermin = 1;
+ var rotation = (layermin==1 && layermax==s);
+ 
+ if (rotation) {
+  for (var i=layermin; i<=layermax; i++) {
+   movelet(face, amount, i, false);
+  }
+  if (update) redrawAll();
+ } else {
+  if (puzzle == "gray" || puzzle == "minimal") {
+   for (var i=layermin; i<=layermax; i++) {
+    movelet(face, amount, i, false);
+   }
+   if (update) redrawAll();
+  } else {
+   for (var i=layermin; i<=layermax; i++) {
+    if (puzzle == "halfturn") {
+     movelet(face, 2, i, update);
+    } else {
+     movelet(face, amount, i, update);
+    }
+   }
+  }
+  if (update && solving) {
+   cnt++;
+   startTimer();
+   if (isSolved()) {
+    finishSolve();
+   }
+   if (puzzle == "disco") {
+    disco();
+   }
+  }
+ }
+}
+
+function movelet(face, amount, layer, update) {
+ // face: 0=F 1=U 2=R
+ // amount: 1=clock 3=cclock
+ if (puzzle == "supercube") {
+  if (face == 2) {
+   for (var i=1; i<=s; i++) {
+    subcyc(1+s*i-layer, 2*s*s+1+s*i-layer, 5*s*s+1+s*i-layer, 5*s*s-s*i+layer, 0, 0, 0, 2, amount, update);
+    cyc4(1+s*i-layer, 2*s*s+1+s*i-layer, 5*s*s+1+s*i-layer, 5*s*s-s*i+layer, amount, update);
+   }
+   if (layer == 1) {
+    for (var i=0; i<Math.floor(s/2); i++)
+     for (var j=0; j<Math.floor((s+1)/2); j++) {
+	  subcyc(3*s*s+1+j+i*s, 4*s*s+1-s-j*s+i, 4*s*s-j-i*s, 3*s*s+s+j*s-i, 0, 3, 2, 1, amount, update);
+      cyc4(3*s*s+1+j+i*s, 4*s*s+1-s-j*s+i, 4*s*s-j-i*s, 3*s*s+s+j*s-i, amount, update);
+	 }
+	if ((s%2)==1)
+     sub2(3*s*s+(s*s+1)/2, 3*s*s+(s*s+1)/2, 3*s*s+(s*s+1)/2, 3*s*s+(s*s+1)/2, 0, 3, 2, 1, amount, update);
+   }
+   if (layer == s) {
+    for (var i=0; i<Math.floor(s/2); i++)
+     for (var j=0; j<Math.floor((s+1)/2); j++) {
+      cyc4(s*s+1+j+i*s, s*s+s+j*s-i, 2*s*s-j-i*s, 2*s*s+1-s-j*s+i, amount, update);
+      subcyc(s*s+1+j+i*s, s*s+s+j*s-i, 2*s*s-j-i*s, 2*s*s+1-s-j*s+i, 0, 1, 2, 3, amount, update);
+     }
+    if ((s%2)==1)
+     sub2(s*s+(s*s+1)/2, s*s+(s*s+1)/2, s*s+(s*s+1)/2, s*s+(s*s+1)/2, 0, 1, 2, 3, amount, update);
+   }
+  } else if (face == 1) {
+   for (var i=1; i<=s; i++) {
+    subcyc(s*s-s+i+s*layer, 2*s*s-s+i+s*layer, 3*s*s-s+i+s*layer, 4*s*s-s+i+s*layer, 0, 0, 0, 0, amount, update);
+    cyc4(s*s-s+i+s*layer, 2*s*s-s+i+s*layer, 3*s*s-s+i+s*layer, 4*s*s-s+i+s*layer, amount, update);
+   }
+   if (layer == 1) {
+    for (var i=0; i<Math.floor(s/2); i++)
+     for (var j=0; j<Math.floor((s+1)/2); j++) {
+      subcyc(1+j+i*s, s*s+1-s-j*s+i, s*s-j-i*s, s+j*s-i, 0, 3, 2, 1, amount, update);
+      cyc4(1+j+i*s, s*s+1-s-j*s+i, s*s-j-i*s, s+j*s-i, amount, update);
+     }
+    if ((s%2)==1)
+     sub2((s*s+1)/2, (s*s+1)/2, (s*s+1)/2, (s*s+1)/2, 0, 3, 2, 1, amount, update);
+   }
+   if (layer == s) {
+    for (var i=0; i<Math.floor(s/2); i++)
+     for (var j=0; j<Math.floor((s+1)/2); j++) {
+      subcyc(5*s*s+1+j+i*s, 5*s*s+s+j*s-i, 6*s*s-j-i*s, 6*s*s+1-s-j*s+i, 0, 1, 2, 3, amount, update);
+      cyc4(5*s*s+1+j+i*s, 5*s*s+s+j*s-i, 6*s*s-j-i*s, 6*s*s+1-s-j*s+i, amount, update);
+     }
+    if ((s%2)==1)
+     sub2(5*s*s+(s*s+1)/2, 5*s*s+(s*s+1)/2, 5*s*s+(s*s+1)/2, 5*s*s+(s*s+1)/2, 0, 1, 2, 3, amount, update);
+   }
+  } else if (face == 0) {
+   for (var i=1; i<=s; i++) {
+    subcyc(s*s+i-s*layer, 2*s*s+s+1-s*i-layer, 5*s*s+1-i+s*layer, 3*s*s-s+s*i+layer, 0, 3, 2, 1, amount, update);
+    cyc4(s*s+i-s*layer, 2*s*s+s+1-s*i-layer, 5*s*s+1-i+s*layer, 3*s*s-s+s*i+layer, amount, update);
+   }
+   if (layer == 1) {
+    for (var i=0; i<Math.floor(s/2); i++)
+     for (var j=0; j<Math.floor((s+1)/2); j++) {
+      subcyc(2*s*s+1+j+i*s, 3*s*s+1-s-j*s+i, 3*s*s-j-i*s, 2*s*s+s+j*s-i, 0, 3, 2, 1, amount, update);
+      cyc4(2*s*s+1+j+i*s, 3*s*s+1-s-j*s+i, 3*s*s-j-i*s, 2*s*s+s+j*s-i, amount, update);
+     }
+    if ((s%2)==1)
+     sub2(2*s*s+(s*s+1)/2, 2*s*s+(s*s+1)/2, 2*s*s+(s*s+1)/2, 2*s*s+(s*s+1)/2, 0, 3, 2, 1, amount, update);
+   }
+   if (layer == s) {
+    for (var i=0; i<Math.floor(s/2); i++)
+     for (var j=0; j<Math.floor((s+1)/2); j++) {
+      subcyc(4*s*s+1+j+i*s, 4*s*s+s+j*s-i, 5*s*s-j-i*s, 5*s*s+1-s-j*s+i, 0, 1, 2, 3, amount, update);
+      cyc4(4*s*s+1+j+i*s, 4*s*s+s+j*s-i, 5*s*s-j-i*s, 5*s*s+1-s-j*s+i, amount, update);
+     }
+    if ((s%2)==1)
+     sub2(4*s*s+(s*s+1)/2, 4*s*s+(s*s+1)/2, 4*s*s+(s*s+1)/2, 4*s*s+(s*s+1)/2, 0, 1, 2, 3, amount, update);
+   }
+  }
+ } else {
+  if (face == 2) {
+   for (var i=1; i<=s; i++)
+    cyc4(1+s*i-layer, 2*s*s+1+s*i-layer, 5*s*s+1+s*i-layer, 5*s*s-s*i+layer, amount, update);
+   if (layer == 1)
+    for (var i=0; i<Math.floor(s/2); i++)
+     for (var j=0; j<Math.floor((s+1)/2); j++)
+      cyc4(3*s*s+1+j+i*s, 4*s*s+1-s-j*s+i, 4*s*s-j-i*s, 3*s*s+s+j*s-i, amount, update);
+   if (layer == s)
+    for (var i=0; i<Math.floor(s/2); i++)
+     for (var j=0; j<Math.floor((s+1)/2); j++)
+      cyc4(s*s+1+j+i*s, s*s+s+j*s-i, 2*s*s-j-i*s, 2*s*s+1-s-j*s+i, amount, update);
+  } else if (face == 1) {
+   for (var i=1; i<=s; i++)
+    cyc4(s*s-s+i+s*layer, 2*s*s-s+i+s*layer, 3*s*s-s+i+s*layer, 4*s*s-s+i+s*layer, amount, update);
+   if (layer == 1)
+    for (var i=0; i<Math.floor(s/2); i++)
+     for (var j=0; j<Math.floor((s+1)/2); j++)
+      cyc4(1+j+i*s, s*s+1-s-j*s+i, s*s-j-i*s, s+j*s-i, amount, update);
+   if (layer == s)
+    for (var i=0; i<Math.floor(s/2); i++)
+     for (var j=0; j<Math.floor((s+1)/2); j++)
+      cyc4(5*s*s+1+j+i*s, 5*s*s+s+j*s-i, 6*s*s-j-i*s, 6*s*s+1-s-j*s+i, amount, update);
+  } else if (face == 0) {
+   for (var i=1; i<=s; i++)
+    cyc4(s*s+i-s*layer, 2*s*s+s+1-s*i-layer, 5*s*s+1-i+s*layer, 3*s*s-s+s*i+layer, amount, update);
+   if (layer == 1)
+    for (var i=0; i<Math.floor(s/2); i++)
+     for (var j=0; j<Math.floor((s+1)/2); j++)
+      cyc4(2*s*s+1+j+i*s, 3*s*s+1-s-j*s+i, 3*s*s-j-i*s, 2*s*s+s+j*s-i, amount, update);
+   if (layer == s)
+    for (var i=0; i<Math.floor(s/2); i++)
+     for (var j=0; j<Math.floor((s+1)/2); j++)
+      cyc4(4*s*s+1+j+i*s, 4*s*s+s+j*s-i, 5*s*s-j-i*s, 5*s*s+1-s-j*s+i, amount, update);
+  }
+ }
+}
+
+function isSolved() {
+ if (puzzle == "dazzler") {
+  for (var i=0; i<6; i++) {
+   for (var j=1; j<=s*s; j++) {
+    var id = i*s*s+j;
+    if (j!=1 && j!=s && j!=s*s-s+1 && j!=s*s && j!=Math.floor(s/2)*(s+1)+1) {
+	 if (stickers[id] != stickers[i*s*s+2]) {
+      return false;
+	 }
+	}
+   }
+  }
+  return true;
+ } else if (puzzle == "3colorl") {
+  var goodFaces = 0;
+  for (var i=0; i<6; i++) {
+   var ok = true;
+   for (var j=1; j<=s*s; j++) {
+    if (stickers[i*s*s+j] != stickers[i*s*s+1])
+	 ok = false;
+   }
+   if (ok) goodFaces++;
+  }
+  if (goodFaces == 2) return true;
+  return false;
+ } else if (puzzle == "3colorf") {
+  var f = function(x){
+   if (x==0 || x==5) return 0;
+   if (x==1 || x==3) return 1;
+   if (x==2 || x==4) return 2;
+  }
+  for (var i=1; i<=s*s*6; i++)
+   if (f(stickers[i]) != f(stickers[i-((i-1)%(s*s))]))
+    return false;
+  return true;
+ } else if (puzzle == "centers"){
+  for (var i=0; i<6; i++) {
+   for (var j=1; j<s-1; j++) {
+    for (var k=1; k<s-1; k++) {
+	 if (stickers[i*s*s+j*s+k+1] != stickers[i*s*s+s+2])
+	  return false;
+	}
+   }
+  }
+  return true;
+ } else if (puzzle == "void"){
+  for (var i=0; i<6; i++) {
+   for (var j=0; j<s; j++) {
+    for (var k=0; k<s; k++) {
+	 if (j==0 || j==s-1 || k==0 || k==s-1)
+	  if (stickers[i*s*s+j*s+k+1] != stickers[i*s*s+1])
+	   return false;
+	}
+   }
+  }
+  return true;
+ } else if (puzzle == "illusion") {
+  for (var i=0; i<6; i++) {
+   var ok = true;
+   for (var j=0; j<s; j++) {
+    for (var k=0; k<s; k++) {
+     if (((j!=0 && j!=s-1) || (k!=0 && k!=s-1)) && stickers[i*s*s+j*s+k+1] != 0) {
+	  ok = false;
+	 }
+	}
+   }
+   if (ok) return true;
+  }
+  return false;
+ } else if (puzzle == "supercube") {
+  for (var i=1; i<=s*s*6; i++) {
+   if (stickers[i] != stickers[i-((i-1)%(s*s))])
+    return false;
+   if (borders[i][0] != borders[i-((i-1)%(s*s))][0])
+    return false;
+  }
+  return true;
+ } else {
+  for (var i=1; i<=s*s*6; i++)
+   if (stickers[i] != stickers[i-((i-1)%(s*s))])
+    return false;
+  return true;
+ }
+}
+
+function scramble() {
+ if (puzzle == "2gen") {
+  var num = s*20 + Math.floor(Math.random()*2);
+  for (var i=0; i<num; i++) {
+   movelet(1+Math.floor(Math.random()*2), Math.floor(Math.random()*3)+1, Math.floor(Math.random()*(s-1)/2)+1, false);
+  }
+ } else if (puzzle == "halfturn") {
+  for (var i=0; i<s*20; i++) {
+   movelet(Math.floor(Math.random()*3), 2, Math.floor(Math.random()*s)+1, false);
+  }
+ } else if (puzzle == "timer") {
+ } else {
+  if (puzzle == "disco" || puzzle == "random") {
+   disco();
+  }
+  for (var i=0; i<s*20; i++) {
+   movelet(Math.floor(Math.random()*3), Math.floor(Math.random()*3)+1, Math.floor(Math.random()*s)+1, false);
+  }
+ }
+
+ redrawAll();
+}
+
+function redraw(id) {
+ if (puzzle == "supercube") {
+  $(id).style.backgroundColor = colors[stickers[id]];
+  $(id).style.borderTopColor = colors[borders[id][0]];
+  $(id).style.borderRightColor = colors[borders[id][1]];
+  $(id).style.borderBottomColor = colors[borders[id][2]];
+  $(id).style.borderLeftColor = colors[borders[id][3]];
+ } else {
+  $(id).bgColor = getColor(id);
+ }
+}
+
+function cyc4(id1, id2, id3, id4, amount, update) {
+ for (var i=0; i<amount; i++) {
+  test = stickers[id1];
+  stickers[id1] = stickers[id2];
+  stickers[id2] = stickers[id3];
+  stickers[id3] = stickers[id4];
+  stickers[id4] = test;
+ }
+
+ if (update) {
+  redraw(id1);
+  redraw(id2);
+  redraw(id3);
+  redraw(id4);
+ }
+}
+
+function subcyc(id1, id2, id3, id4, r1, r2, r3, r4, amount, update) {
+ sub2(id1, id2, id3, id4, r1, r2, r3, r4, amount, false);
+ sub2(id1, id2, id3, id4, (r1+1)%4, (r2+1)%4, (r3+1)%4, (r4+1)%4, amount, false);
+ sub2(id1, id2, id3, id4, (r1+2)%4, (r2+2)%4, (r3+2)%4, (r4+2)%4, amount, false);
+ sub2(id1, id2, id3, id4, (r1+3)%4, (r2+3)%4, (r3+3)%4, (r4+3)%4, amount, false);
+ 
+ if (update) {
+  redraw(id1);
+  redraw(id2);
+  redraw(id3);
+  redraw(id4);
+ }
+}
+
+function sub2(a, b, c, d, ra, rb, rc, rd, amount, update) {
+ for (var i=0; i<amount; i++) {
+  var tmp = borders[a][ra];
+  borders[a][ra] = borders[b][rb];
+  borders[b][rb] = borders[c][rc];
+  borders[c][rc] = borders[d][rd];
+  borders[d][rd] = tmp;
+ }
+
+ if (update) {
+  redraw(a);
+  redraw(b);
+  redraw(c);
+  redraw(d);
+ }
+}
+
+/*******************
+ * TIMER AND STATS *
+ *******************/
+
+function startTimer() {
+ clearTimeout(inspectionID);
+ if (!started) {
+  started = true;
+  startTime = new Date();
+  timerID = setInterval(updateTimer, 100);
+ }
+}
+
+function pretty(time) {
+ time = Math.round(time);
+ var mins = Math.floor(time/60000);
+ var secs = trim((time - 60000*mins)/1000, 3);
+ if (mins == 0) {
+  return secs;
+ } else {
+  return mins + (secs<10?":0":":") + secs;
+ }
+}
+
+function updateTimer() {
+ curTime = new Date();
+ var time = curTime.getTime() - startTime.getTime();
+ $('time').innerHTML = pretty(time);
+}
+
+function stopTimer(good) {
+ if (started) {
+  started = false;
+  curTime = new Date();
+  var time = curTime.getTime() - startTime.getTime();
+  $('time').innerHTML = pretty(time) + (good ? "" : "*");
+  clearInterval(timerID);
+
+  if (good) { // store the time
+   times[times.length] = time;
+   // figure out averages and display
+   var v = "";
+   
+   var min = 0;
+   for (var i=1; i<times.length; i++) {
+    if (times[i] < times[min]) min = i;
+   }
+   v += "Best time: " + pretty(times[min]) + "<br>";
+   
+   for (var i=0; i<avgLengths.length; i++) {
+    var len = avgLengths[i];
+    if (times.length >= len) {
+	 var avgData = getAvg(len, times.slice(times.length - len));
+	 v += "Current avg" + len + ": " + avgData[0] + "<br>";
+	 v += "Best avg" + len + ": ";
+	 if (times.length == len || avgData[1] < bestAverages[i][1]) {
+	  bestAverages[i] = avgData;
+	 }
+	 v += bestAverages[i][0] + "<br>";
+	}
+   }
+   $('stats').innerHTML = v;
+   $('moves').innerHTML = cnt + " moves at " + Math.round(100000*cnt/time)/100 + " moves/sec";
+  }
+ }
+}
+
+function getAvg(n, list) {
+ var max = 0;
+ var min = 0;
+ var sum = list[0];
+ for (var i=1; i<n; i++) {
+  if (list[i] > list[max]) max = i;
+  if (list[i] < list[min]) min = i;
+  sum += list[i];
+ }
+ sum = sum - list[min] - list[max];
+ var v = "";
+ if (n <= 12) {
+  for (var i=0; i<n; i++) {
+   if (i == min || i == max) {
+    v += "(" + pretty(list[i]) + ") ";
+   } else {
+    v += pretty(list[i]) + " ";
+   }
+  }
+  v += "=> ";
+ }
+ var avg = sum/(n-2);
+ v += pretty(avg);
+ return [v, avg];
+}
+
+function clearTimes() {
+ times = [];
+ $('stats').innerHTML = "";
+}
+
+/********************
+ * HELPER FUNCTIONS *
+ ********************/
+
+function $(str) {return document.getElementById(str);}
+
+function trim(number, nDigits) {
+ if (!number || number == Number.POSITIVE_INFINITY || number == Number.NEGATIVE_INFINITY) number = 0;
+ var power = Math.pow(10, nDigits);
+ var trimmed = "" + Math.round(number * power);
+ while (trimmed.length < nDigits + 1) {
+  trimmed = "0" + trimmed;
+ }
+ var len = trimmed.length;
+ return trimmed.substr(0,len - nDigits) + "." + trimmed.substr(len - nDigits, nDigits);
+}
+
+function getBrowser() {
+ // http://www.quirksmode.org/js/detect.html
+ var versionSearchString;
+ var dataBrowser = [
+  {string:navigator.userAgent, subString:"Chrome", identity:"Chrome"},
+  {string:navigator.userAgent, subString:"Safari", identity:"Chrome"},
+  {string:navigator.userAgent, subString:"Firefox", identity:"Firefox"},
+  {string:navigator.userAgent, subString:"MSIE", identity:"IE", versionSearch:"MSIE"}];
+
+ function searchString(data) {
+  for (var i=0;i<data.length;i++) {
+   var dataString = data[i].string;
+   var dataProp = data[i].prop;
+   if (dataString) {
+    if (dataString.indexOf(data[i].subString) != -1)
+     return data[i].identity;
+   } else if (dataProp)
+    return data[i].identity;
+  }
+ };
+ 
+ return searchString(dataBrowser) || "An unknown browser";
+}
+// -->
+</script>
+</head>
+<body text="white" onload=" changedPuzzle();changedEvent();changedColor();init()">
+<div id="options" style="border:1px solid rgba(255, 255, 255, 0)">
+<table style="width:100%"><tr><td>
+kies je puzzle: <select id="puzzle" onchange="changedPuzzle()">
+ <option value="normal" selected>normaal</option>
+ 
+</select></td><td>
+ <select id="pEvent" onchange="changedEvent()">
+ <option value="single" selected>single</option>
+ <option value="marathon">marathon</option>
+ <option value="relay">relay</option>
+</select></td><td>
+virtuele kubus instellingen: <select id="colors" onchange="changedColor()">
+ <option value="default" selected>Normaal</option>
+ <option value="dark">Donker</option>
+ <option value="inverted">omgedraaid</option>
+ <option value="bright">licht</option>
+ <option value="Japanese">Ander design</option>
+ <option value="gray">mislukt</option>
+</select>
+</td></tr><tr><td><input type="checkbox" id="shiftBehavior" onchange="changedShiftBehavior()"> Shift = dubbele draai
+</td><td><input type="checkbox" id="hideStats" onchange="changedHideStats()">  
+</td><td>Welke maat wil je: <input id="sizeText" size="2" maxlength="2" onchange="changedSize()">
+</td></tr></table>
+</div>
+<br>
+<span id="cube"></span><br>
+<span id="time" style="font-size:200%"></span> &nbsp; 
+<span id="progress"></span><br>
+<span id="stats"></span><br>
+<span id="hands">1 2 | 2 1</span><br>
+<span id="moves"></span>
+</body>
+</html>
